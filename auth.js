@@ -26,6 +26,11 @@
     : page === 'admin.html'
       ? 'admin-messaging.js'
       : null;
+  const approvalsScript = page === 'dashboard.html'
+    ? 'dashboard-approvals.js'
+    : page === 'admin.html'
+      ? 'admin-approvals.js'
+      : null;
 
   if (messagingScript) {
     if (!document.querySelector('link[data-salt-story-messaging]')) {
@@ -38,6 +43,20 @@
     const script = document.createElement('script');
     script.src = new URL(messagingScript, assetBase).href;
     script.dataset.saltStoryMessaging = 'true';
+    document.head.appendChild(script);
+  }
+
+  if (approvalsScript) {
+    if (!document.querySelector('link[data-salt-story-approvals]')) {
+      const style = document.createElement('link');
+      style.rel = 'stylesheet';
+      style.href = new URL('approvals.css', assetBase).href;
+      style.dataset.saltStoryApprovals = 'true';
+      document.head.appendChild(style);
+    }
+    const script = document.createElement('script');
+    script.src = new URL(approvalsScript, assetBase).href;
+    script.dataset.saltStoryApprovals = 'true';
     document.head.appendChild(script);
   }
 })();
