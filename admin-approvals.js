@@ -85,9 +85,10 @@
         const d = decisionMap.get(r.id);
         const state = d?.decision || (r.status === 'cancelled' ? 'cancelled' : 'pending');
         const meta = [r.amount != null ? money(r.amount) : '', r.due_date ? `Due ${dateOnly(r.due_date)}` : '', `Sent ${stamp(r.created_at)}`].filter(Boolean).join(' • ');
-        const decision = d ? `<div class="ss-admin-decision"><span class="ss-approval-status ${escapeHtml(d.decision)}">${escapeHtml(pretty(d.decision))}</span>${d.comment ? `<p>${escapeHtml(d.comment)}</p>` : ''}<div class="ss-admin-approval-meta">Recorded ${escapeHtml(stamp(d.created_at))}</div></div>` : '';
+        const statusPill = `<span class="ss-approval-status ${state === 'pending' ? '' : escapeHtml(state)}">${escapeHtml(pretty(state))}</span>`;
         const cancel = !d && r.status === 'open' ? `<button class="ss-cancel-approval" type="button" data-cancel-approval="${r.id}">Cancel Request</button>` : '';
-        return `<div class="ss-admin-approval-item"><div class="record-head"><div><b>${escapeHtml(r.title)}</b><div class="ss-admin-approval-meta">${escapeHtml(meta)}</div></div>${cancel}</div>${r.details ? `<p>${escapeHtml(r.details)}</p>` : ''}<div class="ss-admin-approval-status">${!d ? `<span class="ss-approval-status ${state === 'cancelled' ? 'cancelled' : ''}">${escapeHtml(pretty(state))}</span>` : ''}</div>${decision}</div>`;
+        const decision = d ? `<div class="ss-admin-decision">${d.comment ? `<p><strong>Client note:</strong> ${escapeHtml(d.comment)}</p>` : '<p>No client comment was added.</p>'}<div class="ss-admin-approval-meta">Decision recorded ${escapeHtml(stamp(d.created_at))}</div></div>` : '';
+        return `<div class="ss-admin-approval-item"><div class="record-head"><div><b>${escapeHtml(r.title)}</b><div class="ss-admin-approval-meta">${escapeHtml(meta)}</div></div><div class="ss-admin-approval-head-actions">${statusPill}${cancel}</div></div>${r.details ? `<p>${escapeHtml(r.details)}</p>` : ''}${decision}</div>`;
       }).join('');
       document.querySelectorAll('[data-cancel-approval]').forEach(btn => btn.addEventListener('click', () => cancelRequest(btn.dataset.cancelApproval)));
     }
