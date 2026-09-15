@@ -2,6 +2,7 @@
   const SUPABASE_URL = 'https://mqiofvksgipmowyfjqjn.supabase.co';
   const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_a2gI08GTG1ON5hDwnNvw-g_QUH4SbsB';
   const assetBase = new URL('.', document.currentScript?.src || window.location.href);
+  const ASSET_VERSION = '20260915-2';
 
   if (!window.supabase || !window.supabase.createClient) {
     throw new Error('Supabase client library failed to load.');
@@ -37,17 +38,23 @@
       ? 'admin-files.js'
       : null;
 
+  function versionedAsset(fileName) {
+    const url = new URL(fileName, assetBase);
+    url.searchParams.set('v', ASSET_VERSION);
+    return url.href;
+  }
+
   function loadModule(scriptName, cssName, key) {
     if (!scriptName) return;
     if (!document.querySelector(`link[data-salt-story-${key}]`)) {
       const style = document.createElement('link');
       style.rel = 'stylesheet';
-      style.href = new URL(cssName, assetBase).href;
+      style.href = versionedAsset(cssName);
       style.dataset[`saltStory${key.charAt(0).toUpperCase()}${key.slice(1)}`] = 'true';
       document.head.appendChild(style);
     }
     const script = document.createElement('script');
-    script.src = new URL(scriptName, assetBase).href;
+    script.src = versionedAsset(scriptName);
     script.dataset[`saltStory${key.charAt(0).toUpperCase()}${key.slice(1)}`] = 'true';
     document.head.appendChild(script);
   }
