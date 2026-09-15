@@ -1,6 +1,8 @@
 (() => {
   const BUCKET = 'salt-story-project-files';
   const MAX_SIZE = 25 * 1024 * 1024;
+  const MAX_IMAGE_DIMENSION = 2048;
+  const IMAGE_QUALITY = 0.75;
   const onReady = (fn) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', fn, { once:true }) : fn();
 
   onReady(async () => {
@@ -26,7 +28,7 @@
         <p class="note" style="margin-top:6px">Upload project photos and documents. Client-visible files appear immediately in the client portal; internal files stay staff-only.</p>
         <div class="field" style="margin-top:14px"><label for="ssAdminFileProject">Project</label><select id="ssAdminFileProject"></select></div>
         <form id="ssAdminFileForm"><div class="form-grid">
-          <div class="field full"><label for="ssAdminFileInput">Files</label><div class="ss-file-picker"><input id="ssAdminFileInput" type="file" multiple required></div><div class="note">Up to 25 MB per file.</div></div>
+          <div class="field full"><label for="ssAdminFileInput">Files</label><div class="ss-file-picker"><input id="ssAdminFileInput" type="file" multiple required></div><div class="note">Images are automatically compressed before upload. Other files: up to 25 MB each.</div></div>
           <div class="field"><label for="ssAdminFileCategory">Category</label><select id="ssAdminFileCategory"><option value="photo">Photo</option><option value="selection">Selection</option><option value="receipt">Receipt</option><option value="proposal">Proposal</option><option value="document" selected>Document</option><option value="other">Other</option></select></div>
           <div class="field"><label>Visibility</label><label class="ss-file-check"><input id="ssAdminFileVisible" type="checkbox" checked> Share with client</label></div>
           <div class="field full"><label for="ssAdminFileCaption">Caption / note</label><textarea id="ssAdminFileCaption" maxlength="1000" placeholder="Optional note that appears with the file"></textarea></div>
@@ -63,10 +65,53 @@
       const cleaned = String(name || 'file').normalize('NFKD').replace(/[^A-Za-z0-9._,'!&$@=;:+?() -]/g,'_').replace(/\s+/g,'-').replace(/-+/g,'-');
       return cleaned.slice(-180) || 'file';
     };
+    const canCompressImage = (file) => /^image\/(jpeg|jpg|png|webp|heic|heif)$/i.test(file.type || '');
+    const webpName = (name) => {
+      const raw = String(name || 'image').replace(/\.[^.]+$/, '') || 'image';
+      return `${raw}.webp`;
+    };
 
     function setStatus(text='', isError=false){ status.textContent=text; status.classList.toggle('error',isError); }
     function activeClientId(){ return document.querySelector('.client-btn.active[data-client]')?.dataset.client || ''; }
     function activateTab(){ document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b===tab)); document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p===panel)); loadFiles(); }
+
+    async function compressImage(file){
+      if(!canCompressImage(file)) return { blob:file, fileName:file.name, mimeType:file.type || null, originalSize:file.size, compressed:false };
+      let objectUrl = '';
+      try {
+        objectUrl = URL.createObjectURL(file);
+        const image = await new Promise((resolve,reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('Image could not be decoded'));
+          img.src = objectUrl;
+        });
+        const sourceWidth = image.naturalWidth || image.width;
+        const sourceHeight = image.naturalHeight || image.height;
+        if(!sourceWidth || !sourceHeight) throw new Error('Image dimensions unavailable');
+        const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(sourceWidth, sourceHeight));
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { alpha:true });
+        if(!ctx) throw new Error('Canvas unavailable');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(image, 0, 0, width, height);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', IMAGE_QUALITY));
+        if(!blob || blob.type !== 'image/webp' || blob.size >= file.size * 0.95) {
+          return { blob:file, fileName:file.name, mimeType:file.type || null, originalSize:file.size, compressed:false };
+        }
+        return { blob, fileName:webpName(file.name), mimeType:'image/webp', originalSize:file.size, compressed:true };
+      } catch (error) {
+        console.warn('Salt & Story image compression skipped:', error);
+        return { blob:file, fileName:file.name, mimeType:file.type || null, originalSize:file.size, compressed:false };
+      } finally {
+        if(objectUrl) URL.revokeObjectURL(objectUrl);
+      }
+    }
 
     async function signedUrl(path){ const {data,error}=await db.storage.from(BUCKET).createSignedUrl(path,300); return error?'':(data?.signedUrl||''); }
 
@@ -128,19 +173,27 @@
       e.preventDefault();
       if(!selectedProjectId)return;
       const chosen=Array.from(input.files||[]); if(!chosen.length){setStatus('Choose at least one file.',true);return;}
-      const tooLarge=chosen.find(f=>f.size>MAX_SIZE); if(tooLarge){setStatus(`${tooLarge.name} is larger than 25 MB.`,true);return;}
-      upload.disabled=true; setStatus(`Uploading 0 of ${chosen.length}…`);
-      let completed=0; let failed=0;
+      upload.disabled=true; setStatus(`Preparing 0 of ${chosen.length}…`);
+      let completed=0; let failed=0; let originalBytes=0; let uploadedBytes=0;
       for(const file of chosen){
-        const path=`${selectedProjectId}/${crypto.randomUUID()}-${safeName(file.name)}`;
-        const {error:uploadError}=await db.storage.from(BUCKET).upload(path,file,{contentType:file.type||undefined,cacheControl:'3600',upsert:false});
+        setStatus(`Optimizing ${completed+failed+1} of ${chosen.length}…`);
+        const prepared=await compressImage(file);
+        if(prepared.blob.size>MAX_SIZE){failed++;setStatus(`${file.name} is still larger than 25 MB after optimization.`,true);continue;}
+        const path=`${selectedProjectId}/${crypto.randomUUID()}-${safeName(prepared.fileName)}`;
+        const {error:uploadError}=await db.storage.from(BUCKET).upload(path,prepared.blob,{contentType:prepared.mimeType||undefined,cacheControl:'3600',upsert:false});
         if(uploadError){failed++;setStatus(`Could not upload ${file.name}: ${uploadError.message}`,true);continue;}
-        const {error:metaError}=await db.from('salt_story_project_files').insert({project_id:selectedProjectId,storage_path:path,file_name:file.name,category:category.value,mime_type:file.type||null,size_bytes:file.size,caption:caption.value.trim()||null,client_visible:visible.checked,uploaded_by:userId});
+        const {error:metaError}=await db.from('salt_story_project_files').insert({project_id:selectedProjectId,storage_path:path,file_name:prepared.fileName,category:category.value,mime_type:prepared.mimeType,size_bytes:prepared.blob.size,caption:caption.value.trim()||null,client_visible:visible.checked,uploaded_by:userId});
         if(metaError){failed++;await db.storage.from(BUCKET).remove([path]);setStatus(`Could not register ${file.name}: ${metaError.message}`,true);continue;}
-        completed++; setStatus(`Uploading ${completed+failed} of ${chosen.length}…`);
+        completed++; originalBytes+=prepared.originalSize; uploadedBytes+=prepared.blob.size; setStatus(`Uploading ${completed+failed} of ${chosen.length}…`);
       }
       upload.disabled=false;
-      if(completed){input.value='';caption.value='';setStatus(failed?`${completed} uploaded; ${failed} failed.`:`${completed} ${completed===1?'file':'files'} uploaded successfully.`,failed>0);}
+      if(completed){
+        input.value='';caption.value='';
+        const saved=Math.max(0,originalBytes-uploadedBytes);
+        const savings=originalBytes>0?Math.round((saved/originalBytes)*100):0;
+        const savingsText=saved>1024?` Saved ${fileSize(saved)}${savings?` (${savings}%)`:''}.`:'';
+        setStatus(failed?`${completed} uploaded; ${failed} failed.${savingsText}`:`${completed} ${completed===1?'file':'files'} uploaded successfully.${savingsText}`,failed>0);
+      }
       await loadFiles();
     });
 
