@@ -31,32 +31,28 @@
     : page === 'admin.html'
       ? 'admin-approvals.js'
       : null;
+  const filesScript = page === 'dashboard.html'
+    ? 'dashboard-files.js'
+    : page === 'admin.html'
+      ? 'admin-files.js'
+      : null;
 
-  if (messagingScript) {
-    if (!document.querySelector('link[data-salt-story-messaging]')) {
+  function loadModule(scriptName, cssName, key) {
+    if (!scriptName) return;
+    if (!document.querySelector(`link[data-salt-story-${key}]`)) {
       const style = document.createElement('link');
       style.rel = 'stylesheet';
-      style.href = new URL('messaging.css', assetBase).href;
-      style.dataset.saltStoryMessaging = 'true';
+      style.href = new URL(cssName, assetBase).href;
+      style.dataset[`saltStory${key.charAt(0).toUpperCase()}${key.slice(1)}`] = 'true';
       document.head.appendChild(style);
     }
     const script = document.createElement('script');
-    script.src = new URL(messagingScript, assetBase).href;
-    script.dataset.saltStoryMessaging = 'true';
+    script.src = new URL(scriptName, assetBase).href;
+    script.dataset[`saltStory${key.charAt(0).toUpperCase()}${key.slice(1)}`] = 'true';
     document.head.appendChild(script);
   }
 
-  if (approvalsScript) {
-    if (!document.querySelector('link[data-salt-story-approvals]')) {
-      const style = document.createElement('link');
-      style.rel = 'stylesheet';
-      style.href = new URL('approvals.css', assetBase).href;
-      style.dataset.saltStoryApprovals = 'true';
-      document.head.appendChild(style);
-    }
-    const script = document.createElement('script');
-    script.src = new URL(approvalsScript, assetBase).href;
-    script.dataset.saltStoryApprovals = 'true';
-    document.head.appendChild(script);
-  }
+  loadModule(messagingScript, 'messaging.css', 'messaging');
+  loadModule(approvalsScript, 'approvals.css', 'approvals');
+  loadModule(filesScript, 'files.css', 'files');
 })();
