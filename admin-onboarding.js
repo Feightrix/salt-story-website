@@ -1,6 +1,5 @@
 (() => {
   const onReady=fn=>document.readyState==='loading'?document.addEventListener('DOMContentLoaded',fn,{once:true}):fn();
-  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   onReady(async()=>{
     const db=window.saltStory,clientList=document.getElementById('clientList');if(!db||!clientList)return;
     const aside=clientList.closest('.card'),heading=aside?.querySelector('h2'),note=aside?.querySelector('.note');if(!aside||!heading)return;
@@ -9,9 +8,20 @@
     if(note)note.textContent='Create and invite clients here. Their account is connected automatically when they accept the invitation.';
     const form=document.getElementById('ssInviteForm'),name=document.getElementById('ssInviteName'),email=document.getElementById('ssInviteEmail'),phone=document.getElementById('ssInvitePhone'),send=document.getElementById('ssInviteSend'),cancel=document.getElementById('ssInviteCancel'),status=document.getElementById('ssInviteStatus');
     const setStatus=(t='',err=false)=>{status.textContent=t;status.classList.toggle('error',err)};
-    toggle.addEventListener('click',()=>{box.classList.toggle('show');if(box.classList.contains('show'))name.focus();});cancel.addEventListener('click',()=>{box.classList.remove('show');form.reset();setStatus('');});
+    toggle.addEventListener('click',()=>{box.classList.toggle('show');if(box.classList.contains('show'))name.focus();});
+    cancel.addEventListener('click',()=>{box.classList.remove('show');form.reset();setStatus('');});
     form.addEventListener('submit',async e=>{e.preventDefault();send.disabled=true;setStatus('Sending secure invitation…');const {data,error}=await db.functions.invoke('salt-story-client-invite',{body:{action:'invite',full_name:name.value.trim(),email:email.value.trim(),phone:phone.value.trim()}});send.disabled=false;if(error||data?.error){setStatus(data?.error||error?.message||'Invitation could not be sent.',true);return;}setStatus(`Invitation sent to ${data.email}.`);setTimeout(()=>location.reload(),900);});
-    async function decorateInvites(){const {data,error}=await db.from('salt_story_client_invites').select('client_id,status,email,sent_at,accepted_at');if(error)return;const map=Object.fromEntries((data||[]).map(x=>[x.client_id,x]));document.querySelectorAll('.client-btn[data-client]').forEach(btn=>{const inv=map[btn.dataset.client];if(!inv)return;const old=btn.querySelector('.ss-invite-sent,.ss-invite-accepted');if(old)old.remove();const badge=document.createElement('span');badge.className=inv.status==='accepted'?'ss-invite-accepted':'ss-invite-sent';badge.textContent=inv.status==='accepted'?'Invitation accepted':'Invitation sent';btn.appendChild(badge);});}
-    const observer=new MutationObserver(()=>decorateInvites());observer.observe(clientList,{childList:true,subtree:true});await decorateInvites();
+    async function decorateInvites(){
+      const {data,error}=await db.from('salt_story_client_invites').select('client_id,status');if(error)return;
+      const map=Object.fromEntries((data||[]).map(x=>[x.client_id,x.status]));
+      document.querySelectorAll('.client-btn[data-client]').forEach(btn=>{
+        const inviteStatus=map[btn.dataset.client];if(!inviteStatus)return;
+        let badge=btn.querySelector('.ss-invite-sent,.ss-invite-accepted');
+        if(!badge){badge=document.createElement('span');btn.appendChild(badge);}
+        badge.className=inviteStatus==='accepted'?'ss-invite-accepted':'ss-invite-sent';
+        badge.textContent=inviteStatus==='accepted'?'Invitation accepted':'Invitation sent';
+      });
+    }
+    await decorateInvites();setTimeout(decorateInvites,500);setTimeout(decorateInvites,1200);
   });
 })();
