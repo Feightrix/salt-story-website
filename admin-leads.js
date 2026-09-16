@@ -25,7 +25,23 @@
     const setMsg=(id,text='',error=false)=>{const el=list.querySelector(`[data-lead-message="${id}"]`);if(!el)return;el.textContent=text;el.classList.toggle('error',error)};
     async function load(){const {data,error}=await db.from('salt_story_leads').select('id,full_name,email,phone,property_location,service,message,source,status,converted_client_id,created_at,updated_at').order('created_at',{ascending:false});if(error){list.innerHTML='<div class="ss-lead-empty">Could not load consultation leads.</div>';return;}leads=data||[];render();}
     async function saveStatus(id){const select=list.querySelector(`[data-lead-status="${id}"]`);if(!select)return;setMsg(id,'Saving…');const {error}=await db.from('salt_story_leads').update({status:select.value,updated_at:new Date().toISOString()}).eq('id',id);if(error){setMsg(id,error.message||'Could not update lead.',true);return;}setMsg(id,'Status saved.');await load();}
-    async function inviteLead(id,button){const lead=leads.find(l=>l.id===id);if(!lead)return;button.disabled=true;setMsg(id,'Creating client invitation…');const {data,error}=await db.functions.invoke('salt-story-client-invite',{body:{action:'invite',full_name:lead.full_name,email:lead.email,phone:lead.phone||''}});if(error||data?.error){button.disabled=false;setMsg(id,data?.error||error?.message||'Could not invite client.',true);return;}const clientId=data?.client?.id||null;const {error:updateError}=await db.from('salt_story_leads').update({status:'invited',converted_client_id:clientId,updated_at:new Date().toISOString()}).eq('id',id);if(updateError){button.disabled=false;setMsg(id,'Invitation sent, but the lead status could not be updated.',true);return;}setMsg(id,'Invitation sent.');if(typeof window.loadAll==='function'){try{await window.loadAll()}catch(_){}}await load();}
+    async function inviteLead(id,button){
+      const lead=leads.find(l=>l.id===id);if(!lead)return;
+      button.disabled=true;setMsg(id,'Checking client access…');
+      const {data,error}=await db.functions.invoke('salt-story-client-invite',{body:{action:'invite',full_name:lead.full_name,email:lead.email,phone:lead.phone||''}});
+      if(error||data?.error){button.disabled=false;setMsg(id,data?.error||error?.message||'Could not invite client.',true);return;}
+      const clientId=data?.client?.id||null;
+      const existing=!!data?.existing_client;
+      const pending=!!data?.invitation_pending;
+      const nextStatus=existing?'closed_won':'invited';
+      const {error:updateError}=await db.from('salt_story_leads').update({status:nextStatus,converted_client_id:clientId,updated_at:new Date().toISOString()}).eq('id',id);
+      if(updateError){button.disabled=false;setMsg(id,existing?'Existing client found, but the lead could not be linked.':'Invitation sent, but the lead status could not be updated.',true);return;}
+      if(existing)setMsg(id,'Existing client linked. Lead closed as won.');
+      else if(pending)setMsg(id,'Existing invitation linked.');
+      else setMsg(id,'Invitation sent.');
+      if(typeof window.loadAll==='function'){try{await window.loadAll()}catch(_){}}
+      await load();
+    }
     await load();
   });
 })();
