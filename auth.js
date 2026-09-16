@@ -2,7 +2,7 @@
   const SUPABASE_URL = 'https://mqiofvksgipmowyfjqjn.supabase.co';
   const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_a2gI08GTG1ON5hDwnNvw-g_QUH4SbsB';
   const assetBase = new URL('.', document.currentScript?.src || window.location.href);
-  const ASSET_VERSION = '20260916-1';
+  const ASSET_VERSION = '20260916-2';
 
   if (!window.supabase || !window.supabase.createClient) {
     throw new Error('Supabase client library failed to load.');
@@ -48,6 +48,7 @@
       ? 'admin-budget.js'
       : null;
   const onboardingScript = page === 'admin.html' ? 'admin-onboarding.js' : null;
+  const leadsScript = page === 'admin.html' ? 'admin-leads.js' : null;
 
   function versionedAsset(fileName) {
     const url = new URL(fileName, assetBase);
@@ -76,4 +77,5 @@
   loadModule(appointmentsScript, 'appointments.css', 'appointments');
   loadModule(budgetScript, 'budget.css', 'budget');
   loadModule(onboardingScript, 'onboarding.css', 'onboarding');
+  loadModule(leadsScript, 'leads.css', 'leads');
 })();
