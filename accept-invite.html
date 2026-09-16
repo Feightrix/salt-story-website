@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Accept Invitation | Salt & Story</title>
+<link rel="stylesheet" href="wordmark.css">
+<style>
+:root{--ink:#173844;--sea-soft:#eaf4f5;--sand:#c3a06b;--paper:#fffdfa;--line:rgba(23,56,68,.12);--muted:rgba(23,56,68,.62);--bad:#8a4747;--ok:#316b52}*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;min-height:100vh;background:#f7f5ef;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.wrap{min-height:100vh;display:grid;place-items:center;padding:28px 16px}.card{width:min(560px,100%);background:var(--paper);border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 18px 50px rgba(23,56,68,.08)}.brand{display:block;margin-bottom:28px}.brand img{width:210px;max-width:65vw}.eyebrow{font-size:.72rem;letter-spacing:.15em;text-transform:uppercase;font-weight:850;color:var(--sand)}h1{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:clamp(2.35rem,8vw,3.7rem);line-height:1.02;margin:8px 0 12px}.intro{color:var(--muted);font-size:1rem;line-height:1.55;margin:0 0 24px}.identity{background:var(--sea-soft);border-radius:14px;padding:13px 14px;margin-bottom:18px;display:none}.identity.show{display:block}.identity b,.identity span{display:block}.identity span{color:var(--muted);font-size:.84rem;margin-top:2px}.field{display:grid;gap:6px;margin-top:12px}.field label{font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;font-weight:850;color:var(--muted)}input{width:100%;min-height:50px;border:1px solid rgba(23,56,68,.18);border-radius:12px;background:white;color:var(--ink);font:inherit;font-size:16px;padding:11px 12px;outline:none}input:focus{border-color:#a8cdd7;box-shadow:0 0 0 3px rgba(168,205,215,.22)}button{width:100%;min-height:50px;margin-top:18px;border:0;border-radius:999px;background:var(--ink);color:white;font:inherit;font-weight:850;cursor:pointer}button[disabled]{opacity:.55}.status{min-height:22px;margin-top:12px;color:var(--muted);font-size:.84rem;line-height:1.45}.status.error{color:var(--bad)}.status.ok{color:var(--ok)}.loading{padding:18px 0;color:var(--muted);font-weight:750}.form{display:none}.form.show{display:block}@media(max-width:520px){.card{padding:22px 18px;border-radius:20px}.wrap{padding:14px}.brand img{width:190px}}
+</style>
+</head>
+<body>
+<div class="wrap"><main class="card">
+<a class="brand" href="./index.html"><img class="brand-wordmark" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 3 1%22%3E%3C/svg%3E" alt="Salt & Story"></a>
+<span class="eyebrow">Client invitation</span><h1>Welcome to Salt & Story.</h1><p class="intro">Create your password to activate your secure client workspace.</p>
+<div class="loading" id="loading">Opening your secure invitation…</div>
+<div class="identity" id="identity"><b id="inviteName">Client</b><span id="inviteEmail"></span></div>
+<form class="form" id="inviteForm"><div class="field"><label for="password">Create password</label><input id="password" type="password" minlength="8" autocomplete="new-password" required placeholder="At least 8 characters"></div><div class="field"><label for="confirmPassword">Confirm password</label><input id="confirmPassword" type="password" minlength="8" autocomplete="new-password" required></div><button id="activateBtn" type="submit">Activate My Account</button><div class="status" id="status" aria-live="polite"></div></form>
+</main></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./auth.js?v=20260916-1"></script>
+<script>
+(async()=>{
+  const db=window.saltStory,loading=document.getElementById('loading'),form=document.getElementById('inviteForm'),identity=document.getElementById('identity'),nameEl=document.getElementById('inviteName'),emailEl=document.getElementById('inviteEmail'),password=document.getElementById('password'),confirmPassword=document.getElementById('confirmPassword'),button=document.getElementById('activateBtn'),status=document.getElementById('status');
+  const setStatus=(t='',kind='')=>{status.textContent=t;status.className='status'+(kind?' '+kind:'')};
+  if(!db){loading.textContent='Could not open the invitation. Please try the link again.';return;}
+  await new Promise(r=>setTimeout(r,250));
+  let {data:{session}}=await db.auth.getSession();
+  if(!session){await new Promise(r=>setTimeout(r,600));({data:{session}}=await db.auth.getSession());}
+  if(!session?.user){loading.textContent='This invitation link is invalid or has expired. Ask Salt & Story to send a new invitation.';return;}
+  loading.style.display='none';identity.classList.add('show');form.classList.add('show');nameEl.textContent=session.user.user_metadata?.full_name||'Salt & Story Client';emailEl.textContent=session.user.email||'';
+  form.addEventListener('submit',async e=>{e.preventDefault();if(password.value.length<8){setStatus('Use at least 8 characters.','error');return;}if(password.value!==confirmPassword.value){setStatus('Passwords do not match.','error');return;}button.disabled=true;setStatus('Activating your account…');const {error:updateError}=await db.auth.updateUser({password:password.value});if(updateError){button.disabled=false;setStatus(updateError.message||'Could not set your password.','error');return;}const {data,error}=await db.functions.invoke('salt-story-client-invite',{body:{action:'accept'}});if(error||data?.error){button.disabled=false;setStatus(data?.error||error?.message||'Your password was saved, but the invitation could not be finalized. Please contact Salt & Story.','error');return;}setStatus('Account activated. Opening your dashboard…','ok');setTimeout(()=>location.replace('./dashboard.html'),650);});
+})();
+</script>
+</body>
+</html>
