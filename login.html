@@ -21,14 +21,14 @@
 <section class="brand-panel"><div class="intro"><span class="eyebrow">Your Salt & Story account</span><h1>Your property.<br><em>All in one place.</em></h1><p>View progress, approve selections, message our team, and keep every property detail organized.</p></div></section>
 <section class="login-side"><div class="card">
 <div class="tabs" role="tablist"><button class="tab active" id="signInTab" type="button">Sign In</button><button class="tab" id="createTab" type="button">Create Account</button></div>
-<div id="signInView"><div class="form-title"><span class="eyebrow">Welcome back</span><h2>Client sign in</h2><p>Access your projects, approvals, and messages.</p></div><form class="form" id="signInForm"><div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" required autocomplete="email" placeholder="you@example.com"></div><div class="field"><label for="loginPassword">Password</label><input id="loginPassword" type="password" required minlength="6" autocomplete="current-password" placeholder="••••••••"></div><button class="btn" id="signInButton" type="submit">Sign In</button></form><div class="helper"><span>Need help signing in?</span><button id="forgotBtn" type="button">Reset password</button></div></div>
+<div id="signInView"><div class="form-title"><span class="eyebrow">Welcome back</span><h2>Account sign in</h2><p>Sign in to your Salt & Story workspace.</p></div><form class="form" id="signInForm"><div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" required autocomplete="email" placeholder="you@example.com"></div><div class="field"><label for="loginPassword">Password</label><input id="loginPassword" type="password" required minlength="6" autocomplete="current-password" placeholder="••••••••"></div><button class="btn" id="signInButton" type="submit">Sign In</button></form><div class="helper"><span>Need help signing in?</span><button id="forgotBtn" type="button">Reset password</button></div></div>
 <div id="createView" class="hidden"><div class="form-title"><span class="eyebrow">New client</span><h2>Create your account</h2><p>Start your secure Salt & Story client profile.</p></div><form class="form" id="createForm"><div class="field"><label for="createName">Name</label><input id="createName" required autocomplete="name" placeholder="Your name"></div><div class="field"><label for="createEmail">Email</label><input id="createEmail" type="email" required autocomplete="email" placeholder="you@example.com"></div><div class="field"><label for="createPhone">Phone</label><input id="createPhone" type="tel" autocomplete="tel" placeholder="(555) 555-5555"></div><div class="field"><label for="createPassword">Create password</label><input id="createPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></div><button class="btn" id="createButton" type="submit">Create Account</button></form></div>
 <div class="message" id="authMessage" role="status" aria-live="polite"></div>
-<div class="notice"><strong>Secure account:</strong> sign-in and passwords are now handled by Supabase Auth. New accounts may be asked to confirm their email before signing in.</div>
+<div class="notice"><strong>Secure account:</strong> sign-in and passwords are handled by Supabase Auth. Your account role automatically opens the correct Salt & Story workspace.</div>
 </div></section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./auth.js"></script>
+<script src="./auth.js?v=20260916-5"></script>
 <script>
 const db=window.saltStory;
 const signInTab=document.getElementById('signInTab'),createTab=document.getElementById('createTab'),signInView=document.getElementById('signInView'),createView=document.getElementById('createView'),message=document.getElementById('authMessage');
@@ -37,7 +37,25 @@ function clearMessage(){message.className='message';message.textContent=''}
 function showMessage(text,type='error'){message.className=`message show ${type}`;message.textContent=text}
 function busy(button,state,label){button.disabled=state;if(label)button.textContent=state?'Please wait…':label}
 async function membershipFor(userId){const {data,error}=await db.from('salt_story_memberships').select('role,active').eq('user_id',userId).maybeSingle();if(error)throw error;return data}
-async function routeSignedInUser(user){const membership=await membershipFor(user.id);if(!membership||!membership.active){await db.auth.signOut();showMessage('This account is not enrolled in the Salt & Story client portal.','error');return false}location.href='./dashboard.html';return true}
+async function routeSignedInUser(user){
+  const membership=await membershipFor(user.id);
+  if(!membership||!membership.active){
+    await db.auth.signOut();
+    showMessage('This account is not enrolled in the Salt & Story portal.','error');
+    return false;
+  }
+  if(membership.role==='admin'||membership.role==='staff'){
+    location.replace('./admin.html');
+    return true;
+  }
+  if(membership.role==='client'){
+    location.replace('./dashboard.html');
+    return true;
+  }
+  await db.auth.signOut();
+  showMessage('This account does not have a recognized Salt & Story role.','error');
+  return false;
+}
 signInTab.addEventListener('click',()=>setTab('signin'));createTab.addEventListener('click',()=>setTab('create'));
 
 document.getElementById('signInForm').addEventListener('submit',async e=>{e.preventDefault();clearMessage();const button=document.getElementById('signInButton');busy(button,true,'Sign In');try{const email=document.getElementById('loginEmail').value.trim().toLowerCase(),password=document.getElementById('loginPassword').value;const {data,error}=await db.auth.signInWithPassword({email,password});if(error)throw error;await routeSignedInUser(data.user)}catch(err){showMessage(err.message||'Unable to sign in.','error')}finally{busy(button,false,'Sign In')}});
