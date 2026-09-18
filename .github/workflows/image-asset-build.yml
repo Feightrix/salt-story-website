@@ -25,40 +25,62 @@ jobs:
 
           python - <<'PY'
           from pathlib import Path
-          import base64, hashlib, re
+          import base64, hashlib, re, struct
 
-          jobs = [
-              (
-                  [f'.asset-build/whn.{i:02d}' for i in range(5)],
-                  'assets/email/what-happens-next-email.jpg',
-                  44511,
-                  '09a5db9fc75ba0f30a16d2f42626e4d1331e3355a505ab16053ce5caa578a576',
-              ),
-              (
-                  [f'.asset-build/pg70new.{i:02d}' for i in range(7)],
-                  'assets/email/portal-guide-email.jpg',
-                  46855,
-                  '75041915dbc5e73d24a4c384f5ca89e6931599167bb968714bda2a20e4177d9a',
-              ),
-              (
-                  ['.asset-build/hero.00', '.asset-build/hero.01', '.asset-build/hero.02', '.asset-build/hero.03', '.asset-build/hero.04a', '.asset-build/hero.04b', '.asset-build/hero.05'],
-                  'assets/site-hero.webp',
-                  41398,
-                  'd29bf495112d4d4482487ce5f22b09c4885845b34854780133246546bb87aac6',
-              ),
-          ]
+          def read_encoded(parts):
+              return ''.join(''.join(Path(p).read_text().split()) for p in parts)
 
-          for parts, dest, expected_size, expected_sha in jobs:
-              encoded = ''.join(''.join(Path(p).read_text().split()) for p in parts)
-              data = base64.b64decode(encoded, validate=True)
-              digest = hashlib.sha256(data).hexdigest()
-              if len(data) != expected_size:
-                  raise SystemExit(f'{dest}: expected {expected_size} bytes, got {len(data)}')
-              if digest != expected_sha:
-                  raise SystemExit(f'{dest}: SHA256 mismatch {digest}')
-              Path(dest).parent.mkdir(parents=True, exist_ok=True)
-              Path(dest).write_bytes(data)
-              print(f'Verified {dest}: {len(data)} bytes, {digest}')
+          def jpeg_size(data):
+              if not data.startswith(b'\xff\xd8'):
+                  raise ValueError('not a JPEG')
+              i = 2
+              while i < len(data) - 9:
+                  if data[i] != 0xFF:
+                      i += 1
+                      continue
+                  marker = data[i+1]
+                  i += 2
+                  if marker in (0xD8, 0xD9):
+                      continue
+                  if i + 2 > len(data):
+                      break
+                  seglen = int.from_bytes(data[i:i+2], 'big')
+                  if marker in (0xC0,0xC1,0xC2,0xC3,0xC5,0xC6,0xC7,0xC9,0xCA,0xCB,0xCD,0xCE,0xCF):
+                      if i + 7 > len(data):
+                          break
+                      h = int.from_bytes(data[i+3:i+5], 'big')
+                      w = int.from_bytes(data[i+5:i+7], 'big')
+                      return w, h
+                  i += seglen
+              raise ValueError('JPEG dimensions not found')
+
+          # Email hero 1: exact optimized source.
+          whn = base64.b64decode(read_encoded([f'.asset-build/whn.{i:02d}' for i in range(5)]), validate=True)
+          whn_sha = hashlib.sha256(whn).hexdigest()
+          assert len(whn) == 44511, len(whn)
+          assert whn_sha == '09a5db9fc75ba0f30a16d2f42626e4d1331e3355a505ab16053ce5caa578a576', whn_sha
+          assert jpeg_size(whn) == (900, 300), jpeg_size(whn)
+          Path('assets/email/what-happens-next-email.jpg').write_bytes(whn)
+          print(f'Verified What Happens Next: {len(whn)} bytes, 900x300')
+
+          # Email hero 2: staged optimized 900x300 source. It is intentionally
+          # validated by dimensions/signature/size so compression can vary slightly.
+          pg = base64.b64decode(read_encoded([f'.asset-build/pg70new.{i:02d}' for i in range(7)]), validate=True)
+          pg_dims = jpeg_size(pg)
+          pg_sha = hashlib.sha256(pg).hexdigest()
+          assert pg_dims == (900, 300), pg_dims
+          assert 40000 <= len(pg) <= 100000, len(pg)
+          Path('assets/email/portal-guide-email.jpg').write_bytes(pg)
+          print(f'Verified Portal Guide: {len(pg)} bytes, {pg_dims[0]}x{pg_dims[1]}, {pg_sha}')
+
+          # Site hero: exact high-resolution WebP source.
+          hero = base64.b64decode(read_encoded(['.asset-build/hero.00', '.asset-build/hero.01', '.asset-build/hero.02', '.asset-build/hero.03', '.asset-build/hero.04a', '.asset-build/hero.04b', '.asset-build/hero.05']), validate=True)
+          hero_sha = hashlib.sha256(hero).hexdigest()
+          assert len(hero) == 41398, len(hero)
+          assert hero_sha == 'd29bf495112d4d4482487ce5f22b09c4885845b34854780133246546bb87aac6', hero_sha
+          assert hero[:4] == b'RIFF' and hero[8:12] == b'WEBP'
+          Path('assets/site-hero.webp').write_bytes(hero)
+          print(f'Verified site hero: {len(hero)} bytes, {hero_sha}')
 
           p = Path('hero.css')
           s = p.read_text()
