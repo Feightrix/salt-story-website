@@ -18,26 +18,47 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Rebuild high-resolution image assets
+      - name: Rebuild and verify high-resolution image assets
         shell: bash
         run: |
           set -euo pipefail
 
-          cat .asset-build/whn.00 .asset-build/whn.01 .asset-build/whn.02 .asset-build/whn.03 .asset-build/whn.04 | base64 -d > assets/email/what-happens-next-email.jpg
-          cat .asset-build/pg70new.00 .asset-build/pg70new.01 .asset-build/pg70new.02 .asset-build/pg70new.03 .asset-build/pg70new.04 .asset-build/pg70new.05 .asset-build/pg70new.06 | base64 -d > assets/email/portal-guide-email.jpg
-          cat .asset-build/hero.00 .asset-build/hero.01 .asset-build/hero.02 .asset-build/hero.03 .asset-build/hero.04a .asset-build/hero.04b .asset-build/hero.05 | base64 -d > assets/site-hero.webp
-
-          test "$(wc -c < assets/email/what-happens-next-email.jpg)" -eq 44511
-          test "$(wc -c < assets/email/portal-guide-email.jpg)" -eq 46855
-          test "$(wc -c < assets/site-hero.webp)" -eq 41398
-
-          test "$(xxd -p -l 3 assets/email/what-happens-next-email.jpg)" = "ffd8ff"
-          test "$(xxd -p -l 3 assets/email/portal-guide-email.jpg)" = "ffd8ff"
-          test "$(xxd -p -l 4 assets/site-hero.webp)" = "52494646"
-
           python - <<'PY'
           from pathlib import Path
-          import re
+          import base64, hashlib, re
+
+          jobs = [
+              (
+                  [f'.asset-build/whn.{i:02d}' for i in range(5)],
+                  'assets/email/what-happens-next-email.jpg',
+                  44511,
+                  '09a5db9fc75ba0f30a16d2f42626e4d1331e3355a505ab16053ce5caa578a576',
+              ),
+              (
+                  [f'.asset-build/pg70new.{i:02d}' for i in range(7)],
+                  'assets/email/portal-guide-email.jpg',
+                  46855,
+                  '75041915dbc5e73d24a4c384f5ca89e6931599167bb968714bda2a20e4177d9a',
+              ),
+              (
+                  ['.asset-build/hero.00', '.asset-build/hero.01', '.asset-build/hero.02', '.asset-build/hero.03', '.asset-build/hero.04a', '.asset-build/hero.04b', '.asset-build/hero.05'],
+                  'assets/site-hero.webp',
+                  41398,
+                  'd29bf495112d4d4482487ce5f22b09c4885845b34854780133246546bb87aac6',
+              ),
+          ]
+
+          for parts, dest, expected_size, expected_sha in jobs:
+              encoded = ''.join(''.join(Path(p).read_text().split()) for p in parts)
+              data = base64.b64decode(encoded, validate=True)
+              digest = hashlib.sha256(data).hexdigest()
+              if len(data) != expected_size:
+                  raise SystemExit(f'{dest}: expected {expected_size} bytes, got {len(data)}')
+              if digest != expected_sha:
+                  raise SystemExit(f'{dest}: SHA256 mismatch {digest}')
+              Path(dest).parent.mkdir(parents=True, exist_ok=True)
+              Path(dest).write_bytes(data)
+              print(f'Verified {dest}: {len(data)} bytes, {digest}')
 
           p = Path('hero.css')
           s = p.read_text()
