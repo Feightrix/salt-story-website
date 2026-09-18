@@ -1,4 +1,4 @@
-name: Email Hero Rebuild
+name: Enhance Email Hero Images
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  rebuild:
+  enhance:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -17,24 +17,34 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Rebuild verified hero images
+      - name: Install Pillow
+        run: python -m pip install --quiet pillow
+
+      - name: Upscale and sharpen email heroes
         shell: bash
         run: |
           set -euo pipefail
-          cat .imageparts/whn.* > /tmp/whn.b64
-          cat .imageparts/pg.* > /tmp/pg.b64
-          base64 --decode /tmp/whn.b64 > assets/email/what-happens-next-email.jpg
-          base64 --decode /tmp/pg.b64 > assets/email/portal-guide-email.jpg
+          python - <<'PY'
+          from PIL import Image, ImageFilter
+          import os
 
-          test "$(stat -c%s assets/email/what-happens-next-email.jpg)" = "97031"
-          test "$(stat -c%s assets/email/portal-guide-email.jpg)" = "102530"
-          test "$(sha256sum assets/email/what-happens-next-email.jpg | awk '{print $1}')" = "0e05827db986bf999a33aa0f21f84f92be1679b386074c3976c9784a3533291e"
-          test "$(sha256sum assets/email/portal-guide-email.jpg | awk '{print $1}')" = "081c2b1ec675d025a02f92c5f54b696c7ffebbc7e34dc848f3d9dc8fb9b8a870"
+          files = [
+              'assets/email/what-happens-next-email.jpg',
+              'assets/email/portal-guide-email.jpg',
+          ]
 
-          file assets/email/what-happens-next-email.jpg
-          file assets/email/portal-guide-email.jpg
+          for path in files:
+              im = Image.open(path).convert('RGB')
+              im = im.resize((1200, 400), Image.Resampling.LANCZOS)
+              im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=150, threshold=2))
+              im.save(path, 'JPEG', quality=92, subsampling=0, optimize=True)
+              check = Image.open(path)
+              assert check.size == (1200, 400), (path, check.size)
+              assert os.path.getsize(path) > 120000, (path, os.path.getsize(path))
+              print(path, check.size, os.path.getsize(path))
+          PY
 
-      - name: Commit rebuilt images and clean staging
+      - name: Commit enhanced images and clean staging
         shell: bash
         run: |
           set -euo pipefail
@@ -43,5 +53,5 @@ jobs:
           rm -rf .imageparts
           rm -f .github/workflows/email-hero-rebuild.yml
           git add -A
-          git commit -m "Publish Retina email hero images"
+          git commit -m "Sharpen Retina email hero images"
           git push
