@@ -1,7 +1,11 @@
 name: Image Asset Build
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.asset-build/**'
+      - '.github/workflows/image-asset-build.yml'
 
 permissions:
   contents: write
@@ -11,4 +15,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: echo "Ready"
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild high-resolution image assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat .asset-build/whn.00 .asset-build/whn.01 .asset-build/whn.02 .asset-build/whn.03 .asset-build/whn.04 | base64 -d > assets/email/what-happens-next-email.jpg
+          cat .asset-build/pg70new.00 .asset-build/pg70new.01 .asset-build/pg70new.02 .asset-build/pg70new.03 .asset-build/pg70new.04 .asset-build/pg70new.05 .asset-build/pg70new.06 | base64 -d > assets/email/portal-guide-email.jpg
+          cat .asset-build/hero.00 .asset-build/hero.01 .asset-build/hero.02 .asset-build/hero.03 .asset-build/hero.04a .asset-build/hero.04b .asset-build/hero.05 | base64 -d > assets/site-hero.webp
+
+          test "$(wc -c < assets/email/what-happens-next-email.jpg)" -eq 44511
+          test "$(wc -c < assets/email/portal-guide-email.jpg)" -eq 46855
+          test "$(wc -c < assets/site-hero.webp)" -eq 41398
+
+          test "$(xxd -p -l 3 assets/email/what-happens-next-email.jpg)" = "ffd8ff"
+          test "$(xxd -p -l 3 assets/email/portal-guide-email.jpg)" = "ffd8ff"
+          test "$(xxd -p -l 4 assets/site-hero.webp)" = "52494646"
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('hero.css')
+          s = p.read_text()
+          s2, n = re.subn(
+              r':root\{--hero-art:url\("data:image/webp;base64,[A-Za-z0-9+/=]+"\);\}',
+              ':root{--hero-art:url("assets/site-hero.webp");}',
+              s,
+              count=1,
+          )
+          if n != 1:
+              raise SystemExit(f'Expected one hero-art data URI, replaced {n}')
+          p.write_text(s2)
+          PY
+
+          rm -rf .asset-build
+          rm -f .github/workflows/image-asset-build.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Upgrade email and site hero image quality"
+          git push
