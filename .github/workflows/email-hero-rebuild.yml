@@ -1,4 +1,4 @@
-name: Enhance Email Hero Images
+name: Rebuild Email Hero Images
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  enhance:
+  rebuild:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -20,34 +20,52 @@ jobs:
       - name: Install Pillow
         run: python -m pip install --quiet pillow
 
-      - name: Repair, upscale and sharpen email heroes
+      - name: Generate crisp Retina email heroes
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          from PIL import Image, ImageFilter, ImageFile
+          from PIL import Image, ImageOps, ImageDraw, ImageFont
           import os
 
-          ImageFile.LOAD_TRUNCATED_IMAGES = True
+          src = Image.open('assets/site-hero.webp').convert('RGB')
+          base = ImageOps.fit(src, (1200, 400), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
 
-          files = [
-              'assets/email/what-happens-next-email.jpg',
-              'assets/email/portal-guide-email.jpg',
-          ]
+          serif = '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf'
+          sans_bold = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+          sans = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 
-          for path in files:
-              im = Image.open(path).convert('RGB')
-              im = im.resize((1200, 400), Image.Resampling.LANCZOS)
-              im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=150, threshold=2))
-              im.save(path, 'JPEG', quality=92, subsampling=0, optimize=True)
+          def make(path, title, eyebrow):
+              im = base.copy().convert('RGBA')
+              # Dark coastal wash keeps white type readable while preserving the photography.
+              overlay = Image.new('RGBA', im.size, (23, 56, 68, 92))
+              im = Image.alpha_composite(im, overlay)
+              draw = ImageDraw.Draw(im)
+
+              logo_font = ImageFont.truetype(serif, 38)
+              eyebrow_font = ImageFont.truetype(sans_bold, 24)
+              title_font = ImageFont.truetype(sans_bold, 72)
+              sub_font = ImageFont.truetype(sans, 22)
+
+              draw.text((64, 48), 'Salt & Story', font=logo_font, fill=(255,255,255,255), stroke_width=1, stroke_fill=(23,56,68,120))
+              draw.rounded_rectangle((64, 116, 255, 121), radius=2, fill=(217,154,105,255))
+              draw.text((64, 145), eyebrow, font=eyebrow_font, fill=(242,231,213,255))
+              draw.text((64, 185), title, font=title_font, fill=(255,255,255,255), stroke_width=1, stroke_fill=(23,56,68,150))
+              draw.text((66, 302), 'Thoughtful details. Clear next steps.', font=sub_font, fill=(245,247,246,255))
+
+              out = im.convert('RGB')
+              out.save(path, 'JPEG', quality=92, subsampling=0, optimize=True)
               check = Image.open(path)
               check.load()
               assert check.size == (1200, 400), (path, check.size)
-              assert os.path.getsize(path) > 120000, (path, os.path.getsize(path))
+              assert os.path.getsize(path) > 90000, (path, os.path.getsize(path))
               print(path, check.size, os.path.getsize(path))
+
+          make('assets/email/what-happens-next-email.jpg', 'WHAT HAPPENS NEXT', 'YOUR SALT & STORY JOURNEY')
+          make('assets/email/portal-guide-email.jpg', 'YOUR PORTAL GUIDE', 'YOUR PROJECT WORKSPACE')
           PY
 
-      - name: Commit enhanced images and clean staging
+      - name: Commit rebuilt images and clean staging
         shell: bash
         run: |
           set -euo pipefail
@@ -56,5 +74,5 @@ jobs:
           rm -rf .imageparts
           rm -f .github/workflows/email-hero-rebuild.yml
           git add -A
-          git commit -m "Repair and sharpen Retina email hero images"
+          git commit -m "Rebuild crisp Retina email hero images"
           git push
