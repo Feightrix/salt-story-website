@@ -1,0 +1,47 @@
+name: Email Hero Rebuild
+
+on:
+  push:
+    paths:
+      - '.imageparts/READY'
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild verified hero images
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .imageparts/whn.* > /tmp/whn.b64
+          cat .imageparts/pg.* > /tmp/pg.b64
+          base64 --decode /tmp/whn.b64 > assets/email/what-happens-next-email.jpg
+          base64 --decode /tmp/pg.b64 > assets/email/portal-guide-email.jpg
+
+          test "$(stat -c%s assets/email/what-happens-next-email.jpg)" = "97031"
+          test "$(stat -c%s assets/email/portal-guide-email.jpg)" = "102530"
+          test "$(sha256sum assets/email/what-happens-next-email.jpg | awk '{print $1}')" = "0e05827db986bf999a33aa0f21f84f92be1679b386074c3976c9784a3533291e"
+          test "$(sha256sum assets/email/portal-guide-email.jpg | awk '{print $1}')" = "081c2b1ec675d025a02f92c5f54b696c7ffebbc7e34dc848f3d9dc8fb9b8a870"
+
+          file assets/email/what-happens-next-email.jpg
+          file assets/email/portal-guide-email.jpg
+
+      - name: Commit rebuilt images and clean staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -rf .imageparts
+          rm -f .github/workflows/email-hero-rebuild.yml
+          git add -A
+          git commit -m "Publish Retina email hero images"
+          git push
