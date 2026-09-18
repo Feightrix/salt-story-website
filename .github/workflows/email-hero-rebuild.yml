@@ -20,13 +20,15 @@ jobs:
       - name: Install Pillow
         run: python -m pip install --quiet pillow
 
-      - name: Upscale and sharpen email heroes
+      - name: Repair, upscale and sharpen email heroes
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          from PIL import Image, ImageFilter
+          from PIL import Image, ImageFilter, ImageFile
           import os
+
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
 
           files = [
               'assets/email/what-happens-next-email.jpg',
@@ -39,6 +41,7 @@ jobs:
               im = im.filter(ImageFilter.UnsharpMask(radius=1.2, percent=150, threshold=2))
               im.save(path, 'JPEG', quality=92, subsampling=0, optimize=True)
               check = Image.open(path)
+              check.load()
               assert check.size == (1200, 400), (path, check.size)
               assert os.path.getsize(path) > 120000, (path, os.path.getsize(path))
               print(path, check.size, os.path.getsize(path))
@@ -53,5 +56,5 @@ jobs:
           rm -rf .imageparts
           rm -f .github/workflows/email-hero-rebuild.yml
           git add -A
-          git commit -m "Sharpen Retina email hero images"
+          git commit -m "Repair and sharpen Retina email hero images"
           git push
